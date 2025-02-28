@@ -3,74 +3,75 @@ import { io } from "socket.io-client";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
-const socket = io("http://localhost:3000", {
-    withCredentials: true,
-    extraHeaders: {
-        token: sessionStorage.getItem("token"),
-    },
-});
-
-
 const Rooms = () => {
     const [roomName, setRoomName] = useState("");
     const [rooms, setRooms] = useState([]);
+    const [socket, setSocket] = useState(null);
     const navigate = useNavigate();
     const user = JSON.parse(sessionStorage.getItem("user"));
+    const token = sessionStorage.getItem("token");
+
     useEffect(() => {
-        io("http://localhost:3000", {
-            withCredentials: true,
-            extraHeaders: {
-                token: sessionStorage.getItem("token"),
-            },
-        });
+        // Check if token is available before establishing socket connection
+        if (token) {
+            const newSocket = io("https://chat-application-96bk.onrender.com", {
+                withCredentials: true,
+                extraHeaders: {
+                    token: token,
+                },
+            });
 
-        const fetchRooms = async () => {
-            try {
-                const response = await axios.get("http://localhost:3000/api/auth/rooms", {
-                });
-                // console.log("response ", response);
-                const data = response.data
-                setRooms(data.data);
-            } catch (error) {
-                console.error("Error fetching rooms:", error);
-            }
-        };
+            // Set socket connection
+            setSocket(newSocket);
 
+            newSocket.on("connect", () => {
+                console.log("Connected to socket server");
+            });
+
+            newSocket.on("room-created", (newRoom) => {
+                setRooms((prevRooms) => [...prevRooms, newRoom]);
+            });
+
+            // Cleanup on component unmount
+            return () => {
+                newSocket.disconnect();
+            };
+        }
+    }, [token]); // Re-run when token changes
+
+    const fetchRooms = async () => {
+        try {
+            const response = await axios.get("https://chat-application-96bk.onrender.com/api/auth/rooms");
+            setRooms(response.data.data);
+        } catch (error) {
+            console.error("Error fetching rooms:", error);
+        }
+    };
+
+    useEffect(() => {
         fetchRooms();
-    }, []);
-    useEffect(() => {
-        socket.on("connect", () => {
-            console.log("Connected")
-        });
-        socket.on("room-created", (newRoom) => {
-            setRooms((prevRooms) => [...prevRooms, newRoom]);
-        });
-
-        return () => {
-            socket.off("room-created");
-        };
-    }, []);
-
+    }, []); // Run once on component mount
 
     const createRoom = () => {
         if (roomName.trim() === "") return;
         socket.emit("room-create", { roomName });
         setRoomName(""); // Clear input after sending
     };
+
     const joinRoom = (roomId) => {
         socket.emit("room-join", { roomId });
         socket.on("room-Joined", () => {
             try {
                 navigate(`/chat/${roomId}`); // Navigate to chat page
-                // navigate(`/chat`);
             } catch (e) {
                 console.error("Failed to join room", e);
             }
         });
     };
+
     return (
         <div className="flex flex-col items-center min-h-screen bg-gray-100 p-6">
-            <h2 className="text-2xl font-bold mb-4">{user && user.name} {" "}Chat Rooms</h2>
+            <h2 className="text-2xl font-bold mb-4">{user && user.name} Chat Rooms</h2>
 
             {/* Create Room */}
             <div className="flex gap-2 mb-4">
@@ -88,6 +89,7 @@ const Rooms = () => {
                     Create Room
                 </button>
             </div>
+
             {/* List of Available Rooms */}
             <div className="w-full max-w-md bg-white p-4 rounded-lg shadow-md">
                 <h3 className="text-lg font-semibold mb-2">Available Rooms</h3>

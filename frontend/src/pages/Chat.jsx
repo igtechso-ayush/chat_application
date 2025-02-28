@@ -5,12 +5,13 @@ import { useParams } from "react-router-dom";
 import { io } from "socket.io-client";
 import { useNavigate } from "react-router-dom";
 
-const socket = io("http://localhost:3000", {
+const socket = io("https://chat-application-96bk.onrender.com", {
     withCredentials: true,
     extraHeaders: {
         token: sessionStorage.getItem("token"),
     },
-});
+}); 
+
 
 const Chat = () => {
     const navigate = useNavigate();
@@ -21,6 +22,7 @@ const Chat = () => {
     const [roomName, setRoomName] = useState("");
     const [join, setJoin] = useState("");
     const currentUser = JSON.parse(sessionStorage.getItem("user"));
+    const token = sessionStorage.getItem("token");
 
     // Video call states
     const [isCallActive, setIsCallActive] = useState(false);
@@ -31,10 +33,19 @@ const Chat = () => {
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const peerConnection = useRef(null);
+    const pendingIceCandidates = useRef([]);
     const [callEnded, setCallEnded] = useState(false);
 
     // Join room on component mount
     useEffect(() => {
+        if(token){
+            io("https://chat-application-96bk.onrender.com", {
+                withCredentials: true,
+                extraHeaders: {
+                    token: sessionStorage.getItem("token"),
+                },
+            }); 
+        }
 
         socket.emit("room-join", { roomId });
 
@@ -122,8 +133,7 @@ const Chat = () => {
 
                 // Create and send offer to the other peer
                 const offer = await peerConnection.current.createOffer();
-                await peerConnection.current.setLocalDescription(offer);
-
+          await peerConnection.current.setLocalDescription(new RTCSessionDescription(offer));
                 socket.emit("video-offer", {
                     roomId,
                     target: data.accepterId,
@@ -140,30 +150,40 @@ const Chat = () => {
         });
 
         socket.on("video-offer", async (data) => {
+            console.log("video-offer", data);
             try {
-                if (!peerConnection.current || peerConnection.current.signalingState === "stable") {
-                    // Ensure that you are either starting a new connection or accepting an offer
-                    if (!peerConnection.current) {
-                        await setupPeerConnection();
-                    }
-
+                // Check if peerConnection is initialized
+                if (!peerConnection.current) {
+                    // Initialize peer connection if not already initialized
+                    await setupPeerConnection();
+                }
+        
+                // Now check if the signaling state is stable
+                if (peerConnection.current.signalingState === "stable") {
+                    // Set remote description when receiving an offer
                     await peerConnection.current.setRemoteDescription(new RTCSessionDescription(data.offer));
-
+                    await processPendingCandidates();
+        
+                    // Create an answer once remote description is set
                     const answer = await peerConnection.current.createAnswer();
                     await peerConnection.current.setLocalDescription(answer);
-
+        
+                    // Send the answer back to the caller
                     socket.emit("video-answer", {
                         roomId,
                         target: data.callerId,
                         answer: answer
                     });
                 } else {
+                    // Log if the state is not stable and cannot process the offer
                     console.warn("PeerConnection is not in stable state to handle offer:", peerConnection.current.signalingState);
                 }
             } catch (err) {
                 console.error("Error handling offer:", err);
             }
         });
+        
+        
 
         socket.on("video-answer", async (data) => {
             try {
@@ -182,7 +202,9 @@ const Chat = () => {
                 if (peerConnection.current && peerConnection.current.remoteDescription) {
                     await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate));
                 } else {
-                    console.warn("Cannot add ICE candidate because remote description is not set yet.");
+                    // Store the candidate for later
+                    pendingIceCandidates.current.push(data.candidate);
+                    console.log("ICE candidate stored for later processing");
                 }
             } catch (err) {
                 console.error("Error adding ICE candidate:", err);
@@ -234,7 +256,23 @@ const Chat = () => {
             endCall();
         };
     }, []);
-
+    const processPendingCandidates = async () => {
+        if (pendingIceCandidates.current.length > 0 && 
+            peerConnection.current && 
+            peerConnection.current.remoteDescription) {
+            
+            console.log(`Processing ${pendingIceCandidates.current.length} pending ICE candidates`);
+            
+            try {
+                for (const candidate of pendingIceCandidates.current) {
+                    await peerConnection.current.addIceCandidate(new RTCIceCandidate(candidate));
+                }
+                pendingIceCandidates.current = [];
+            } catch (err) {
+                console.error("Error processing pending ICE candidates:", err);
+            }
+        }
+    };
     // Set up WebRTC peer connection
     const setupPeerConnection = async () => {
         try {
@@ -253,7 +291,7 @@ const Chat = () => {
                     { urls: 'stun:stun1.l.google.com:19302' }
                 ]
             });
-
+            // const pc = new RTCPeerConnection()
             // Add local tracks to peer connection
             userMedia.getTracks().forEach(track => {
                 pc.addTrack(track, userMedia);
@@ -366,7 +404,7 @@ const Chat = () => {
     };
     const handleLogout = async () => {
         try {
-            await axios.post("http://localhost:3000/api/auth/logout", {}, { withCredentials: true });
+            await axios.post("https://chat-application-96bk.onrender.com/api/auth/logout", {}, { withCredentials: true });
             sessionStorage.removeItem("token");
             sessionStorage.removeItem("user");
             navigate("/");

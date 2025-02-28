@@ -4,11 +4,13 @@ import './App.css'
 import Login from './pages/login'
 import Chat from "./pages/Chat";
 import Rooms from "./pages/Rooms";
-
+import ErrorBoundary from "./pages/ErrorBoundary";
+// import { SocketProvider } from "./socketConnection/SocketContext";
 function App() {
 
 
   return (
+    <ErrorBoundary>
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
@@ -16,6 +18,7 @@ function App() {
         <Route path="/chat/:roomId" element={<Chat />} />
       </Routes>
     </Router>
+    </ErrorBoundary>
   )
 }
 
