@@ -24,7 +24,7 @@ app.use(morgan('dev'))
 db.connect();
 const PORT = process.env.PORT || 5000;
 
-app.use("/",(req,res)=>{
+app.get("/",(req,res)=>{
     res.send("server is running")
 })
 // Initialize Socket.io
