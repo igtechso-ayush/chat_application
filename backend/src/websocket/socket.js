@@ -250,7 +250,7 @@ function initializeSocket(server) {
             // Forward the offer to the target peer
             socket.to(roomId).emit("video-offer", {
                 roomId,
-                callerId: socket.userId,
+                callerId: socket.id,
                 offer
             });
         });
