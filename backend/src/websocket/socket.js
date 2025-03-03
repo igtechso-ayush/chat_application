@@ -210,80 +210,28 @@ function initializeSocket(server) {
                 socket.emit("error", { message: "Error restoring message" });
             }
         });
-
-        socket.on("video-call-request", (data) => {
-            const { roomId, callerId, callerName } = data;
-
-            // Broadcast to all users in the room except the caller
-            socket.to(roomId).emit("video-call-request", {
-                roomId,
-                callerId,
-                callerName
-            });
+        socket.on("start-call", ({ roomId }) => {
+            console.log(`Call started in room ${roomId} by ${socket.id}`);
+            socket.to(roomId).emit("incoming-call", { roomId,callerId: socket.id });
         });
-        socket.on("video-call-accepted", (data) => {
-            const { roomId, callerId, accepterId } = data;
-
-            // Notify the caller that the call was accepted
-            io.to(roomId).emit("video-call-accepted", {
-                roomId,
-                callerId,
-                accepterId
-            });
+    
+        socket.on("offer", ({ targetId, offer }) => {
+            socket.to(targetId).emit("receive-offer", { offer, senderId: socket.id });
         });
-        socket.on("video-call-rejected", (data) => {
-            const { roomId, callerId, rejecterId, rejecterName } = data;
-
-            // Notify the caller that the call was rejected
-            socket.to(roomId).emit("video-call-rejected", {
-                roomId,
-                callerId,
-                rejecterId,
-                rejecterName
-            });
+    
+        socket.on("answer", ({ targetId, answer }) => {
+            socket.to(targetId).emit("answer", { answer, senderId: socket.id });
+        });
+    
+        socket.on("ice-candidate", ({ targetId, candidate }) => {
+            socket.to(targetId).emit("ice-candidate", { candidate, senderId: socket.id });
+        });
+    
+        socket.on("end-call", ({ roomId }) => {
+            io.to(roomId).emit("call-ended");
         });
 
-        // WebRTC signaling events
-        socket.on("video-offer", (data) => {
-            const { roomId, target, offer } = data;
-
-            // Forward the offer to the target peer
-            socket.to(roomId).emit("video-offer", {
-                roomId,
-                callerId: socket.id,
-                offer
-            });
-        });
-        socket.on("video-answer", (data) => {
-            const { roomId, target, answer } = data;
-
-            // Forward the answer to the target peer
-            socket.to(roomId).emit("video-answer", {
-                roomId,
-                answer
-            });
-        });
-
-
-        socket.on("video-ice-candidate", (data) => {
-            const { roomId, candidate } = data;
-
-            // Broadcast ICE candidate to all peers in the room except sender
-            socket.to(roomId).emit("video-ice-candidate", {
-                roomId,
-                candidate
-            });
-        });
-
-
-        socket.on("video-call-ended", (data) => {
-            const { roomId } = data;
-
-            // Notify all users in the room that the call has ended
-            io.to(roomId).emit("video-call-ended", {
-                roomId
-            });
-        });
+       
         socket.on("disconnect", () => {
             console.log("User disconnected:", socket.id);
         });
